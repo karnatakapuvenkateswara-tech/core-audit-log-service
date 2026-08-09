@@ -28,13 +28,19 @@ public class SecurityConfig {
 
     @Bean
     public UserDetailsService userDetailsService(
-            @Value("${security.write-api.username}") String username,
-            @Value("${security.write-api.password}") String password,
+            @Value("${security.write-api.username}") String writerUsername,
+            @Value("${security.write-api.password}") String writerPassword,
+            @Value("${security.audit-api.username}") String auditorUsername,
+            @Value("${security.audit-api.password}") String auditorPassword,
             PasswordEncoder passwordEncoder) {
         return new InMemoryUserDetailsManager(
-                User.withUsername(username)
-                        .password(passwordEncoder.encode(password))
+                User.withUsername(writerUsername)
+                        .password(passwordEncoder.encode(writerPassword))
                         .roles("WRITER")
+                        .build(),
+                User.withUsername(auditorUsername)
+                        .password(passwordEncoder.encode(auditorPassword))
+                        .roles("AUDITOR")
                         .build()
         );
     }
@@ -50,8 +56,12 @@ public class SecurityConfig {
                                 new AntPathRequestMatcher("/actuator/info")).permitAll()
                         .requestMatchers(new AntPathRequestMatcher("/api/v1/events", HttpMethod.POST.name()),
                                 new AntPathRequestMatcher("/api/v1/events", HttpMethod.GET.name()),
+                                new AntPathRequestMatcher("/api/v1/events/export", HttpMethod.GET.name()),
+                                new AntPathRequestMatcher("/api/v1/events/*/redact", HttpMethod.POST.name()),
                                 new AntPathRequestMatcher("/audit/verify", HttpMethod.GET.name()))
                         .hasRole("WRITER")
+                        .requestMatchers(new AntPathRequestMatcher("/api/v1/compliance/**", HttpMethod.GET.name()))
+                        .hasRole("AUDITOR")
                         .anyRequest().authenticated())
                 .httpBasic(Customizer.withDefaults());
 

@@ -8,6 +8,7 @@ record EventQuery(
         String resourceId,
         String eventType,
         Instant from,
-        Instant to
+        Instant to,
+        Boolean archived
 ) {
 }

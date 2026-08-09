@@ -31,8 +31,16 @@ public class EventRecord {
     @Column(nullable = false, updatable = false)
     private String resourceId;
 //added columnDefination as text removed @LOB fixes
-    @Column(columnDefinition = "text", nullable = false, updatable = false)
+    @Column(columnDefinition = "text", nullable = false)
     private String payload;
+
+    /**
+     * SHA-256 of the original payload, captured once at write time. {@code contentHash}
+     * commits to this rather than to {@code payload} directly, so redacting the payload
+     * later never invalidates the chain - see {@link EventHashing}.
+     */
+    @Column(nullable = false, updatable = false, length = 64)
+    private String payloadHash;
 
     @Column(nullable = false, updatable = false)
     private Instant timestamp;
@@ -46,6 +54,29 @@ public class EventRecord {
     @Column(nullable = false, updatable = false, length = 64)
     private String contentHash;
 
+    /**
+     * Lifecycle metadata, not chain content: mutable by design (set by the archival
+     * sweep after the record is written) and deliberately excluded from
+     * {@link EventHashing#contentHash}, so archiving a record never invalidates
+     * its hash or breaks the chain for records around it.
+     */
+    @Column(nullable = false)
+    private boolean archived = false;
+
+    @Column
+    private Instant archivedAt;
+
+    /**
+     * Payload lifecycle metadata, mutable by design and excluded from the hash for
+     * the same reason as {@code archived}: it records what happened to the record
+     * after the fact, not what the record originally was.
+     */
+    @Column(nullable = false)
+    private boolean redacted = false;
+
+    @Column
+    private Instant redactedAt;
+
     protected EventRecord() {
         // JPA
     }
@@ -58,13 +89,14 @@ public class EventRecord {
         this.resourceType = resourceType;
         this.resourceId = resourceId;
         this.payload = payload;
+        this.payloadHash = EventHashing.payloadHash(payload);
         this.timestamp = timestamp;
         // Truncated to microseconds: standard SQL TIMESTAMP precision (H2 and Postgres),
         // so the hash computed here matches what a later read-back will recompute.
         this.receivedAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
         this.previousHash = previousHash;
         this.contentHash = EventHashing.contentHash(
-                eventType, actorId, resourceType, resourceId, payload, timestamp, receivedAt, previousHash);
+                eventType, actorId, resourceType, resourceId, payloadHash, timestamp, receivedAt, previousHash);
     }
 
     public UUID getId() {
@@ -91,6 +123,10 @@ public class EventRecord {
         return payload;
     }
 
+    public String getPayloadHash() {
+        return payloadHash;
+    }
+
     public Instant getTimestamp() {
         return timestamp;
     }
@@ -105,5 +141,35 @@ public class EventRecord {
 
     public String getContentHash() {
         return contentHash;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public Instant getArchivedAt() {
+        return archivedAt;
+    }
+
+    public boolean isRedacted() {
+        return redacted;
+    }
+
+    public Instant getRedactedAt() {
+        return redactedAt;
+    }
+
+    /**
+     * Replaces the payload with a tombstone. {@code payloadHash} and {@code contentHash}
+     * are untouched, so the chain stays valid; verification of this record's payload
+     * against payloadHash is simply no longer possible, by design.
+     */
+    void redact(Instant redactedAt) {
+        if (this.redacted) {
+            throw new IllegalStateException("Record " + id + " is already redacted");
+        }
+        this.payload = "[REDACTED]";
+        this.redacted = true;
+        this.redactedAt = redactedAt;
     }
 }

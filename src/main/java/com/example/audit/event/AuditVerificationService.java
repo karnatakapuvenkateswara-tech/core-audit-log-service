@@ -31,13 +31,25 @@ public class AuditVerificationService {
                         expectedPreviousHash, record.getPreviousHash());
             }
 
-            String recomputedHash = EventHashing.contentHash(
+            String recomputedContentHash = EventHashing.contentHash(
                     record.getEventType(), record.getActorId(), record.getResourceType(),
-                    record.getResourceId(), record.getPayload(), record.getTimestamp(),
+                    record.getResourceId(), record.getPayloadHash(), record.getTimestamp(),
                     record.getReceivedAt(), record.getPreviousHash());
-            if (!recomputedHash.equals(record.getContentHash())) {
+            if (!recomputedContentHash.equals(record.getContentHash())) {
                 return ChainVerificationResult.broken(checked, record.getId(),
-                        ChainViolationType.CONTENT_HASH_MISMATCH, recomputedHash, record.getContentHash());
+                        ChainViolationType.CONTENT_HASH_MISMATCH, recomputedContentHash, record.getContentHash());
+            }
+
+            // A redacted record's payload was deliberately replaced with a tombstone, so
+            // it will never hash back to payloadHash - that's expected, not a violation.
+            // For everything else, the live payload must still match what was committed
+            // to at write time.
+            if (!record.isRedacted()) {
+                String recomputedPayloadHash = EventHashing.payloadHash(record.getPayload());
+                if (!recomputedPayloadHash.equals(record.getPayloadHash())) {
+                    return ChainVerificationResult.broken(checked, record.getId(),
+                            ChainViolationType.PAYLOAD_HASH_MISMATCH, recomputedPayloadHash, record.getPayloadHash());
+                }
             }
 
             expectedPreviousHash = record.getContentHash();

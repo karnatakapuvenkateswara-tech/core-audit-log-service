@@ -10,10 +10,15 @@ public record EventResponse(
         String resourceType,
         String resourceId,
         String payload,
+        String payloadHash,
         Instant timestamp,
         Instant receivedAt,
         String previousHash,
-        String contentHash
+        String contentHash,
+        boolean archived,
+        Instant archivedAt,
+        boolean redacted,
+        Instant redactedAt
 ) {
     public static EventResponse from(EventRecord record) {
         return new EventResponse(
@@ -23,10 +28,15 @@ public record EventResponse(
                 record.getResourceType(),
                 record.getResourceId(),
                 record.getPayload(),
+                record.getPayloadHash(),
                 record.getTimestamp(),
                 record.getReceivedAt(),
                 record.getPreviousHash(),
-                record.getContentHash()
+                record.getContentHash(),
+                record.isArchived(),
+                record.getArchivedAt(),
+                record.isRedacted(),
+                record.getRedactedAt()
         );
     }
 }
