@@ -1,0 +1,60 @@
+package com.example.audit.event;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.util.HexFormat;
+import java.util.List;
+
+/**
+ * Computes the SHA-256 content hash used to chain {@link EventRecord}s together.
+ * Genesis records (no predecessor) chain from {@link #GENESIS_HASH}.
+ *
+ * <p>The chain commits to {@code payloadHash} rather than the raw payload, so a
+ * record's payload can later be redacted (replaced with a tombstone) without
+ * invalidating {@code contentHash} or breaking the chain: the hash of the
+ * original payload was captured at write time and never needs to be recomputed
+ * from payload bytes that may no longer exist.
+ */
+final class EventHashing {
+
+    static final String GENESIS_HASH = "0".repeat(64);
+
+    private static final String DELIMITER = " ";
+
+    private EventHashing() {
+    }
+
+    static String payloadHash(String payload) {
+        return sha256Hex(payload);
+    }
+
+    /**
+     * Hashes an ordered list of record content hashes, so a bundle exported for
+     * offline verification can detect if it was reordered, truncated, or had
+     * records added/removed after export - independent of each record's own
+     * per-field integrity, which is checked separately.
+     */
+    static String bundleHash(List<String> contentHashesInOrder) {
+        return sha256Hex(String.join(DELIMITER, contentHashesInOrder));
+    }
+
+    static String contentHash(String eventType, String actorId, String resourceType, String resourceId,
+                               String payloadHash, Instant timestamp, Instant receivedAt, String previousHash) {
+        String canonical = String.join(DELIMITER,
+                eventType, actorId, resourceType, resourceId, payloadHash,
+                timestamp.toString(), receivedAt.toString(), previousHash);
+        return sha256Hex(canonical);
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 algorithm not available", e);
+        }
+    }
+}
